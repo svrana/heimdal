@@ -1,0 +1,8 @@
+# Amout of between dep change and command run. Editors typically swap files in and out
+# so multiple events fired for each save, this delay will attempts to catch them all.
+delay_ms = 500
+
+[[target]]
+    name = "heimdal"
+    pkg = "cmd/heimdal/main.go"
+    command = "make"

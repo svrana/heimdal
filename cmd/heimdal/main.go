@@ -8,19 +8,16 @@ import (
 	"syscall"
 
 	"github.com/mattmoor/dep-notify/pkg/graph"
+	"github.com/svrana/heimdal/pkg/exec"
 )
 
-func start(ctx context.Context, files []string) {
+func start(ctx context.Context, runners map[string]*exec.Runner) {
 	fs := make(chan string)
 
 	g, errCh, err := graph.New(func(ss graph.StringSet) {
-		// ugh, a write in nvim ends up with 4 events for the same
-		// file, remove, create, chmod write and chmod so will have to
-		// buffer these
-		fmt.Printf("event: %v\n ", ss)
-		for _, file := range files {
-			if ss.Has(file) {
-				fs <- file
+		for target := range runners {
+			if ss.Has(target) {
+				fs <- target
 			}
 		}
 	})
@@ -30,7 +27,7 @@ func start(ctx context.Context, files []string) {
 	}
 	defer g.Shutdown()
 
-	for _, file := range files {
+	for file := range runners {
 		fmt.Printf("Watching %s and its deps for changes\n", file)
 		if err := g.Add(file); err != nil {
 			fmt.Printf("failed to start watch on: %s, %v\n", file, err)
@@ -40,6 +37,7 @@ func start(ctx context.Context, files []string) {
 
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt, syscall.SIGTERM)
+
 	for {
 		select {
 		case file, ok := <-fs:
@@ -48,6 +46,10 @@ func start(ctx context.Context, files []string) {
 				break
 			}
 			fmt.Printf("received: %s\n", file)
+			if runner, ok := runners[file]; ok {
+				runner.Run(ctx)
+			}
+
 		case err := <-errCh:
 			fmt.Printf("got err: %v\n", err)
 			return
@@ -65,5 +67,12 @@ func main() {
 		fmt.Printf("Must specify a path or package to watch\n")
 		os.Exit(1)
 	}
-	start(context.Background(), os.Args[1:])
+
+	watches := os.Args[1:]
+
+	runners := make(map[string]*exec.Runner)
+	for _, filename := range watches {
+		runners[filename] = exec.NewRunner("make")
+	}
+	start(context.Background(), runners)
 }

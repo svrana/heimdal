@@ -2,13 +2,16 @@ package exec
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"sync/atomic"
 	"time"
+
+	"github.com/svrana/heimdal/pkg/zapped"
 )
 
-var duration = 200 * time.Millisecond
+var duration = 800 * time.Millisecond
 
 type Runner struct {
 	command string
@@ -27,6 +30,8 @@ func NewRunner(command string, args ...string) *Runner {
 }
 
 func (r *Runner) Run(ctx context.Context) {
+	l := zapped.FromContext(ctx)
+
 	if r.timer == nil {
 		r.timer = time.NewTimer(duration)
 	} else {
@@ -51,7 +56,11 @@ func (r *Runner) Run(ctx context.Context) {
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
 				cmd.Stdin = os.Stdin
+				fmt.Println("running command")
 				if err := cmd.Run(); err != nil {
+					if r.ctx.Err() == nil {
+						l.Info("command cancelled")
+					}
 					continue
 				}
 

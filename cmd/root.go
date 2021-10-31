@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/svrana/heimdal"
 	"github.com/svrana/heimdal/pkg/config"
@@ -19,16 +21,39 @@ var cfgFile string
 var cfg config.Blob
 var logLevel string
 
+func stringToZapLevel(level string) zapcore.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return zapcore.DebugLevel
+	case "info":
+		return zapcore.InfoLevel
+	case "warn":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	case "fatal":
+		return zapcore.FatalLevel
+	default:
+		return zapcore.WarnLevel
+	}
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "heimdal",
 	Short: "Run commands as your go code or its dependencies change",
-	Run: func(cmd *cobra.Command, _ []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		if len(cfg.Targets) == 0 {
 			fmt.Println("Must specify a path or package to watch")
 			os.Exit(1)
 		}
+		zapConfig := zap.NewDevelopmentConfig()
+		zapConfig.Level.SetLevel(stringToZapLevel(logLevel))
+		l, err := zapConfig.Build()
+		if err != nil {
+			fmt.Printf("failed constructing logger: %s\n", err)
+			os.Exit(1)
+		}
 
-		l, _ := zap.NewDevelopment()
 		s := l.Sugar()
 		defer l.Sync()
 		ctx := zapped.NewContext(context.Background(), s)
@@ -53,7 +78,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $CWD/.heimdal.toml)")
 	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
 
-	rootCmd.PersistentFlags().StringVar(&logLevel, "logs", "info", "log level (debug, info, fatal)")
+	rootCmd.PersistentFlags().StringVar(&logLevel, "logs", "info", "log level (debug, info, warn, error, fatal)")
 	viper.BindPFlag("logs", rootCmd.PersistentFlags().Lookup("logs"))
 
 	rootCmd.PersistentFlags().IntVar(&cfg.DelayMS, "delay", 500, "milliseconds to delay before triggering command")
